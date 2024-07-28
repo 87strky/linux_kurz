@@ -1,3 +1,5 @@
+// Discord Username:martinodstrcil
+
 1. mkdir -p projekt1
 2. cd projekt1
 3. wget https://raw.githubusercontent.com/ENGETO-Academy/Linux-public/main/files/pwlist.csv -O pwlist.csv
