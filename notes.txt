@@ -1,3 +1,5 @@
+// Discord Username:martinodstrcil
+
 1. Přihlásit se na Linux pod svého uživatele.
 2. Vytvořit složku s název projekt1.
 3. Jít do složky projekt1.
