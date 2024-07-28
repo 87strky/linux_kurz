@@ -1,0 +1,159 @@
+1. Přihlásit se na Linux pod svého uživatele.
+2. Vytvořit složku s název projekt1.
+3. Jít do složky projekt1.
+4. Stáhnutí souboru pwlist.csv z uvedeného odkazu.
+5. Vytvoření souboru script.py
+
+# -*- coding: utf-8 -*-
+import pandas as pd
+import re
+from datetime import datetime
+import json
+
+# Načtení a úprava CSV souboru
+# Tento blok kódu načítá soubor 'pwlist.csv', čte jeho obsah, 
+# odstraňuje Windows koncové znaky řádků (CRLF) a ponechává pouze Unix koncové znaky (LF).
+# Upravený obsah se uloží do nového souboru 'pwlist_unix.csv'.
+with open('pwlist.csv', 'r', encoding='utf-8') as f:
+    lines = f.readlines()
+    lines = [line.replace('\r\n', '\n').strip() for line in lines]
+
+with open('pwlist_unix.csv', 'w', encoding='utf-8') as f:
+    f.write('\n'.join(lines) + '\n')
+
+# Vlastní funkce pro čtení CSV souboru
+# Tato funkce čte soubor řádek po řádku, rozdělí každý řádek na dvě části (název generátoru a vzorek)
+# na základě první čárky a vrací DataFrame.
+def custom_csv_reader(filepath):
+    data = []
+    with open(filepath, 'r', encoding='utf-8') as f:
+        for line in f:
+            parts = line.strip().split(',', 1)  # Rozdělení pouze na první čárce
+            if len(parts) == 2:
+                generator, sample = parts
+                data.append([generator, sample])
+    return pd.DataFrame(data, columns=['generator', 'sample'])
+
+# Načtení CSV souboru do DataFrame pomocí vlastní funkce
+# Tento blok kódu načte upravený CSV soubor 'pwlist_unix.csv' do DataFrame pomocí vlastní funkce 'custom_csv_reader'.
+df = custom_csv_reader('pwlist_unix.csv')
+
+# Funkce pro validaci
+# Následující funkce kontrolují, zda jednotlivé vzorky splňují daná kritéria:
+# - 'min_length' kontroluje, zda je délka vzorku alespoň 8 znaků.
+# - 'min_lower' kontroluje, zda vzorek obsahuje alespoň jedno malé písmeno.
+# - 'min_upper' kontroluje, zda vzorek obsahuje alespoň jedno velké písmeno.
+# - 'min_digit' kontroluje, zda vzorek obsahuje alespoň jednu číslici.
+# - 'min_special' kontroluje, zda vzorek obsahuje alespoň jeden speciální znak.
+# - 'valid_prefix' kontroluje, zda žádné dva vzorky nemají stejnou počáteční trojici znaků.
+# - 'valid_suffix' kontroluje, zda žádné dva vzorky nemají stejnou koncovou trojici znaků.
+def min_length(sample):
+    return len(sample) >= 8
+
+def min_lower(sample):
+    return bool(re.search(r'[a-z]', sample))
+
+def min_upper(sample):
+    return bool(re.search(r'[A-Z]', sample))
+
+def min_digit(sample):
+    return bool(re.search(r'\d', sample))
+
+def min_special(sample):
+    return bool(re.search(r'\W', sample))
+
+def valid_prefix(samples):
+    prefixes = [sample[:3] for sample in samples]
+    return len(prefixes) == len(set(prefixes))
+
+def valid_suffix(samples):
+    suffixes = [sample[-3:] for sample in samples]
+    return len(suffixes) == len(set(suffixes))
+
+# Spočítání vzorků pro každý generátor
+# Tento blok kódu počítá počet vzorků pro každý generátor a vytváří seznam validních generátorů,
+# které mají alespoň 50 vzorků.
+generator_counts = df['generator'].value_counts()
+valid_generators = generator_counts[generator_counts >= 50].index.tolist()
+
+# Hodnocení generátorů
+# Tento blok kódu hodnotí každý generátor, který má alespoň 50 vzorků.
+# Počítá, kolik vzorků splňuje jednotlivá kritéria a vypočítává skóre pro každý generátor.
+# Výsledky jsou uloženy do seznamu 'results'.
+results = []
+
+for generator in valid_generators:
+    samples = df[df['generator'] == generator]['sample'].tolist()
+    total_count = len(samples)
+
+    # Počítání vzorků, které splňují jednotlivá kritéria
+    min_length_count = sum(min_length(sample) for sample in samples)
+    min_lower_count = sum(min_lower(sample) for sample in samples)
+    min_upper_count = sum(min_upper(sample) for sample in samples)
+    min_digit_count = sum(min_digit(sample) for sample in samples)
+    min_special_count = sum(min_special(sample) for sample in samples)
+    valid_prefix_all = valid_prefix(samples)
+    valid_suffix_all = valid_suffix(samples)
+
+    # Výpočet skóre
+    # Pokud všechny vzorky splňují dané kritérium, bod je přidělen.
+    score = sum([
+        min_length_count == total_count,
+        min_lower_count == total_count,
+        min_upper_count == total_count,
+        min_digit_count == total_count,
+        min_special_count == total_count,
+        valid_prefix_all,
+        valid_suffix_all,
+    ])
+    
+    results.append({
+        'type': generator,
+        'total_count': int(total_count),
+        'min_length': int(min_length_count),
+        'min_lower': int(min_lower_count),
+        'min_upper': int(min_upper_count),
+        'min_digit': int(min_digit_count),
+        'min_special': int(min_special_count),
+        'valid_prefix': int(valid_prefix_all) * total_count,
+        'valid_suffix': int(valid_suffix_all) * total_count,
+        'score': int(score)
+    })
+
+# Diskvalifikace generátorů s méně než 50 vzorky
+# Tento blok kódu diskvalifikuje generátory, které mají méně než 50 vzorků.
+# Generátor je diskvalifikován (skóre je -1) a všechny hodnoty kritérií jsou nastaveny na 0.
+for generator in generator_counts[generator_counts < 50].index:
+    total_count = generator_counts[generator]
+    results.append({
+        'type': generator,
+        'total_count': int(total_count),
+        'min_length': 0,
+        'min_lower': 0,
+        'min_upper': 0,
+        'min_digit': 0,
+        'min_special': 0,
+        'valid_prefix': 0,
+        'valid_suffix': 0,
+        'score': -1
+    })
+
+# Najít vítěze (generátor s nejvyšším skóre)
+# Tento blok kódu najde generátor s nejvyšším skóre ze seznamu 'results'.
+winner = max(results, key=lambda x: x['score'])['type']
+
+# Vytvoření JSON reportu
+# Tento blok kódu vytvoří JSON report obsahující jméno, datum, vítězný generátor a data pro všechny generátory.
+# Report je uložen do souboru 'report.json'.
+report = {
+    'name': 'Martin Odstrcil',
+    'date': datetime.now().strftime('%d-%m-%Y/%H:%M'),
+    'winner': winner,
+    'data': results
+}
+
+with open('report.json', 'w') as f:
+    json.dump(report, f, indent=4)
+
+6. Instalace Python a potřebných balíčků
+7. Spuštění skriptu

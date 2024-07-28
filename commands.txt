@@ -1,0 +1,144 @@
+1. mkdir -p projekt1
+2. cd projekt1
+3. wget https://raw.githubusercontent.com/ENGETO-Academy/Linux-public/main/files/pwlist.csv -O pwlist.csv
+4. vi script.py (i) dáno dovnitř:
+
+# -*- coding: utf-8 -*-
+import pandas as pd
+import re
+from datetime import datetime
+import json
+
+# Načtení a úprava CSV souboru
+with open('pwlist.csv', 'r', encoding='utf-8') as f:
+    lines = f.readlines()
+    lines = [line.replace('\r\n', '\n').strip() for line in lines]
+
+with open('pwlist_unix.csv', 'w', encoding='utf-8') as f:
+    f.write('\n'.join(lines) + '\n')
+
+# Vlastní funkce pro čtení CSV souboru, která zpracuje všechna pole za prvním jako celek
+def custom_csv_reader(filepath):
+    data = []
+    with open(filepath, 'r', encoding='utf-8') as f:
+        for line in f:
+            parts = line.strip().split(',', 1)  # Rozdělení pouze na první čárce
+            if len(parts) == 2:
+                generator, sample = parts
+                data.append([generator, sample])
+    return pd.DataFrame(data, columns=['generator', 'sample'])
+
+# Načtení CSV souboru do DataFrame pomocí vlastní funkce
+df = custom_csv_reader('pwlist_unix.csv')
+
+# Funkce pro validaci
+def min_length(sample):
+    return len(sample) >= 8
+
+def min_lower(sample):
+    return bool(re.search(r'[a-z]', sample))
+
+def min_upper(sample):
+    return bool(re.search(r'[A-Z]', sample))
+
+def min_digit(sample):
+    return bool(re.search(r'\d', sample))
+
+def min_special(sample):
+    return bool(re.search(r'\W', sample))
+
+def valid_prefix(samples):
+    prefixes = [sample[:3] for sample in samples]
+    return len(prefixes) == len(set(prefixes))
+
+def valid_suffix(samples):
+    suffixes = [sample[-3:] for sample in samples]
+    return len(suffixes) == len(set(suffixes))
+
+# Spočítání vzorků pro každý generátor
+generator_counts = df['generator'].value_counts()
+valid_generators = generator_counts[generator_counts >= 50].index.tolist()
+
+# Hodnocení generátorů
+results = []
+
+for generator in valid_generators:
+    samples = df[df['generator'] == generator]['sample'].tolist()
+    total_count = len(samples)
+
+    # Počítání vzorků, které splňují jednotlivá kritéria
+    min_length_count = sum(min_length(sample) for sample in samples)
+    min_lower_count = sum(min_lower(sample) for sample in samples)
+    min_upper_count = sum(min_upper(sample) for sample in samples)
+    min_digit_count = sum(min_digit(sample) for sample in samples)
+    min_special_count = sum(min_special(sample) for sample in samples)
+    valid_prefix_all = valid_prefix(samples)
+    valid_suffix_all = valid_suffix(samples)
+
+    # Výpočet skóre
+    score = sum([
+        min_length_count == total_count,
+        min_lower_count == total_count,
+        min_upper_count == total_count,
+        min_digit_count == total_count,
+        min_special_count == total_count,
+        valid_prefix_all,
+        valid_suffix_all,
+    ])
+    
+    results.append({
+        'type': generator,
+        'total_count': int(total_count),
+        'min_length': int(min_length_count),
+        'min_lower': int(min_lower_count),
+        'min_upper': int(min_upper_count),
+        'min_digit': int(min_digit_count),
+        'min_special': int(min_special_count),
+        'valid_prefix': int(valid_prefix_all) * total_count,
+        'valid_suffix': int(valid_suffix_all) * total_count,
+        'score': int(score)
+    })
+
+# Diskvalifikace generátorů s méně než 50 vzorky
+for generator in generator_counts[generator_counts < 50].index:
+    total_count = generator_counts[generator]
+    results.append({
+        'type': generator,
+        'total_count': int(total_count),
+        'min_length': 0,
+        'min_lower': 0,
+        'min_upper': 0,
+        'min_digit': 0,
+        'min_special': 0,
+        'valid_prefix': 0,
+        'valid_suffix': 0,
+        'score': -1
+    })
+
+# Najít vítěze (generátor s nejvyšším skóre)
+winner = max(results, key=lambda x: x['score'])['type']
+
+# Vytvoření JSON reportu
+report = {
+    'name': 'Martin Odstrcil',
+    'date': datetime.now().strftime('%d-%m-%Y/%H:%M'),
+    'winner': winner,
+    'data': results
+}
+
+# Uložení JSON reportu
+with open('report.json', 'w') as f:
+    json.dump(report, f, indent=4)
+
+esc
+:wq
+
+5.sudo yum install python3-pip
+6.pip3 install pandas openpyxl
+
+7.python3 script.py
+
+
+
+
+
